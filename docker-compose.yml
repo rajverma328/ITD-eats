@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  web:
+    build:
+      context: .
+      # You can override the Dockerfile target here if needed
+    image: food-bubbles:latest
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      # REQUIRED: set these in a .env file or replace with your secrets at runtime
+      - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_PASS_HASH=${ADMIN_PASS_HASH}
+      - RESET_TZ=${RESET_TZ:-Asia/Kolkata}
+      # Choose one of DATABASE_URL options below (Postgres recommended)
+      # Postgres (recommended):
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/foodbubbles}
+      # If you prefer SQLite, comment the Postgres line above and use:
+      # - DATABASE_URL=${DATABASE_URL:-sqlite:///data/items.db}
+    depends_on:
+      - db
+    volumes:
+      # Mount your project into the container for live editing during development.
+      # Remove or change this for production builds where you copy files at build time.
+      - ./:/app:cached
+      # Persistent folder for sqlite (if used)
+      - ./data:/home/appuser/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-foodbubbles}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"   # optional: exposes Postgres host port (remove in shared environments)
+
+volumes:
+  pgdata:

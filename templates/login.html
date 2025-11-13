@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Login — Food Bubbles</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+</head>
+<body class="login-bg">
+  <main class="centered">
+    <div class="card login-card" role="form" aria-labelledby="loginTitle">
+      <div class="login-head">
+        <svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="10" fill="#7a1f2f"/>
+          <path d="M6 12c1.5-3 6-3 7.5 0 1.5-3 6-3 7.5 0" stroke="#f2c037" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+        </svg>
+        <h2 id="loginTitle">Enter password</h2>
+      </div>
+
+      {% if error %}
+        <div class="error">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" class="login-form">
+        <label for="password" class="sr-only">Password</label>
+        <input id="password" name="password" type="password" placeholder="Password" required />
+        <button type="submit" class="btn primary">Enter</button>
+      </form>
+
+      <p class="muted">This site resets daily at 3:00 PM (server time).</p>
+    </div>
+  </main>
+</body>
+</html>

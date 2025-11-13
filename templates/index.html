@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Food Bubbles — ITC</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <!-- Simple ITC-style wordmark -->
+      <svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="10" fill="#7a1f2f"/>
+        <path d="M6 12c1.5-3 6-3 7.5 0 1.5-3 6-3 7.5 0" stroke="#f2c037" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <h1>Food Bubbles</h1>
+        <div class="subtitle">Pick. Vote. Share — resets daily at 3:00 PM</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <a class="link" href="{{ url_for('logout') }}">Logout</a>
+    </div>
+  </header>
+
+  <main id="app" class="container">
+    <section id="bubbles" class="bubbles-grid" aria-live="polite">
+      <!-- dynamic bubbles injected here -->
+    </section>
+  </main>
+
+  <!-- Floating Add Button -->
+  <button id="fab" class="fab" aria-label="Add new item">+</button>
+
+  <!-- Add Item modal -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <header class="modal-header">
+        <h3 id="modalTitle">Add a food item</h3>
+        <button id="closeModal" class="icon-btn" aria-label="Close">✕</button>
+      </header>
+
+      <form id="addForm" class="modal-body">
+        <label for="itemName" class="sr-only">Food name</label>
+        <div class="input-row">
+          <input id="itemName" name="name" type="text" placeholder="e.g. Masala Dosa" autocomplete="off" required maxlength="50" />
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn primary">Add item</button>
+          <button type="button" id="cancelBtn" class="btn ghost">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- toast -->
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>
