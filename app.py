@@ -20,7 +20,7 @@ if not ADMIN_PASS_HASH:
 
 # timezone & reset time (3 PM)
 RESET_TZ = os.environ.get("RESET_TZ", "Asia/Kolkata")
-RESET_TIME = dtime(15, 0, 0)  # 15:00 = 3 PM
+RESET_TIME = dtime(18, 0, 0)  # 15:00 = 3 PM singapore time
 
 # -----------------------
 # App + DB setup
