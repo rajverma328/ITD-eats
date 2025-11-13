@@ -225,7 +225,6 @@ def create_app(test_config=None):
         # Only increment Item.votes when Vote insertion succeeded
         it.votes = Item.votes + 1 if isinstance(Item.votes, int) else it.votes + 1  # safe increment
         # better: increment the specific instance's votes
-        it.votes = it.votes + 1
         db.session.add(it)
         db.session.commit()
         return jsonify({"ok": True, "id": it.id, "votes": it.votes})
