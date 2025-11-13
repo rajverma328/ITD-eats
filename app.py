@@ -3,11 +3,15 @@ import os
 from datetime import datetime, date, time as dtime
 import threading
 import logging
+import uuid
 
 import pytz
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import UniqueConstraint
+from sqlalchemy import func
 
 db = SQLAlchemy()
 
@@ -17,8 +21,15 @@ db = SQLAlchemy()
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
-    votes = db.Column(db.Integer, default=0)
+    votes = db.Column(db.Integer, default=0, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Vote(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey("item.id", ondelete="CASCADE"), nullable=False)
+    voter_token = db.Column(db.String(64), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("item_id", "voter_token", name="uix_item_voter"),)
 
 
 # -----------------------
@@ -52,6 +63,8 @@ def maybe_reset(app, RESET_TZ, RESET_TIME):
         if _last_reset_date == today:
             return
         with app.app_context():
+            # delete Votes and Items
+            Vote.query.delete()
             Item.query.delete()
             db.session.commit()
             _last_reset_date = today
@@ -70,6 +83,14 @@ def require_login(fn):
         return fn(*args, **kwargs)
     return wrapper
 
+def ensure_voter_token():
+    """Ensure a persistent voter_token exists in session and return it."""
+    token = session.get("voter_token")
+    if not token:
+        token = uuid.uuid4().hex
+        session["voter_token"] = token
+    return token
+
 
 # -----------------------
 # Application factory
@@ -85,10 +106,8 @@ def create_app(test_config=None):
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change_this_secret_in_prod")
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///items.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    ADMIN_PASS_HASH = os.environ.get("ADMIN_PASS_HASH")
-    if not ADMIN_PASS_HASH:
-        # fallback for quick testing only (do not leave this in a public repo)
-        ADMIN_PASS_HASH = "scrypt:32768:8:1$INnuLziqpYVfTZ2d$5ae101b115844cca1f313cacd2323f10a81cc14127ad55b66a1e4097e8da5dc3ad342e37791713013f8e9333d241a2b5637f208c33624d8679cb3c27970d557a"
+
+    ADMIN_PASS_HASH = "scrypt:32768:8:1$INnuLziqpYVfTZ2d$5ae101b115844cca1f313cacd2323f10a81cc14127ad55b66a1e4097e8da5dc3ad342e37791713013f8e9333d241a2b5637f208c33624d8679cb3c27970d557a"
 
     RESET_TZ = os.environ.get("RESET_TZ", "Asia/Kolkata")
     RESET_TIME = dtime.fromisoformat(os.environ.get("RESET_TIME", "18:00:00"))
@@ -115,6 +134,11 @@ def create_app(test_config=None):
     # -----------------------
     # Routes (closures so they capture ADMIN_PASS_HASH, RESET_TZ, RESET_TIME)
     # -----------------------
+    @app.before_request
+    def _before_request():
+        # ensure each session gets a persistent voter token used to limit votes
+        ensure_voter_token()
+
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if request.method == "POST":
@@ -143,7 +167,15 @@ def create_app(test_config=None):
     def api_items():
         maybe_reset(app, RESET_TZ, RESET_TIME)
         items = Item.query.order_by(Item.votes.desc(), Item.created_at.asc()).all()
-        return jsonify([{"id": it.id, "name": it.name, "votes": it.votes} for it in items])
+        # include whether current voter has voted on each item (helpful for UI to disable bubble)
+        voter = session.get("voter_token")
+        voted_item_ids = set()
+        if voter:
+            votes = Vote.query.filter_by(voter_token=voter).all()
+            voted_item_ids = {v.item_id for v in votes}
+        return jsonify([{"id": it.id, "name": it.name, "votes": it.votes, "voted_by_me": (it.id in voted_item_ids)} for it in items])
+
+
 
     @app.route("/api/items", methods=["POST"])
     @require_login
@@ -151,19 +183,50 @@ def create_app(test_config=None):
         maybe_reset(app, RESET_TZ, RESET_TIME)
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
+
         if not name:
             return jsonify({"error": "Name required"}), 400
-        it = Item(name=name, votes=1)
+
+        # --- NEW: case-insensitive duplicate check ---
+        existing = Item.query.filter(func.lower(Item.name) == name.lower()).first()
+        if existing:
+            return jsonify({"error": "This item is already in the list."}), 400
+        # ------------------------------------------------
+
+        it = Item(name=name, votes=0)
         db.session.add(it)
         db.session.commit()
+
         return jsonify({"ok": True, "id": it.id, "name": it.name, "votes": it.votes})
+
 
     @app.route("/api/items/<int:item_id>/vote", methods=["POST"])
     @require_login
     def api_vote(item_id):
         maybe_reset(app, RESET_TZ, RESET_TIME)
+        voter = session.get("voter_token")
+        if not voter:
+            # should never happen because of before_request, but just in case
+            voter = ensure_voter_token()
+
+        # Ensure item exists
         it = Item.query.get_or_404(item_id)
-        it.votes += 1
+
+        # Try to insert a Vote row. UniqueConstraint will prevent double-voting for same voter_token+item.
+        v = Vote(item_id=item_id, voter_token=voter)
+        db.session.add(v)
+        try:
+            # commit the Vote; if it violates unique constraint, IntegrityError will be raised
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": "You have already voted for this item."}), 400
+
+        # Only increment Item.votes when Vote insertion succeeded
+        it.votes = Item.votes + 1 if isinstance(Item.votes, int) else it.votes + 1  # safe increment
+        # better: increment the specific instance's votes
+        it.votes = it.votes + 1
+        db.session.add(it)
         db.session.commit()
         return jsonify({"ok": True, "id": it.id, "votes": it.votes})
 
